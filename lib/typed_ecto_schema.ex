@@ -59,6 +59,7 @@ defmodule TypedEctoSchema do
     wrapped_block =
       wrapper.(
         quote do
+          TypedEctoSchema.__add_primary_key__(__MODULE__)
           unquote(new_block)
           @enforce_keys @keys_to_enforce
         end
@@ -155,6 +156,17 @@ defmodule TypedEctoSchema do
   ##
 
   @doc false
+  def __add_primary_key__(mod) do
+    case Module.get_attribute(mod, :primary_key) do
+      {name, type, opts} ->
+        __add_field__(mod, nil, name, type, opts)
+
+      _ ->
+        :ok
+    end
+  end
+
+  @doc false
   def __add_field__(mod, macro, name, ecto_type, opts) when is_atom(name) do
     base_type = type_for(ecto_type)
 
@@ -244,6 +256,12 @@ defmodule TypedEctoSchema do
   defp type_for(:binary_id) do
     quote do
       binary()
+    end
+  end
+
+  defp type_for(:id) do
+    quote do
+      integer()
     end
   end
 

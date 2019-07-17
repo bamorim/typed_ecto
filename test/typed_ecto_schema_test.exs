@@ -15,7 +15,6 @@ defmodule TypedEctoSchemaTest do
     defmodule TestStruct do
       use TypedEctoSchema
 
-      @primary_key false
       typed_schema "table" do
         field(:int, :integer)
         field(:string)
@@ -64,6 +63,7 @@ defmodule TypedEctoSchemaTest do
 
   test "generates an Ecto.Schema" do
     assert TestStruct.__schema__(:fields) == [
+             :id,
              :int,
              :string,
              :string_with_default,
@@ -77,6 +77,7 @@ defmodule TypedEctoSchemaTest do
 
   test "generates the struct with its defaults" do
     assert TestStruct.__struct__() == %TestStruct{
+             id: nil,
              int: nil,
              string: nil,
              string_with_default: "default",
@@ -114,7 +115,6 @@ defmodule TypedEctoSchemaTest do
       defmodule TestStruct2 do
         use Ecto.Schema
 
-        @primary_key false
         schema "table" do
           field(:int, :integer)
           field(:string)
@@ -127,6 +127,7 @@ defmodule TypedEctoSchemaTest do
         end
 
         @type t() :: %__MODULE__{
+                id: integer() | nil,
                 int: integer() | nil,
                 string: String.t() | nil,
                 string_with_default: String.t(),
@@ -178,6 +179,7 @@ defmodule TypedEctoSchemaTest do
 
   test "generates a function to get the struct keys" do
     assert TestStruct.__typed_schema__(:keys) == [
+             :id,
              :int,
              :string,
              :string_with_default,
@@ -193,6 +195,7 @@ defmodule TypedEctoSchemaTest do
     types =
       quote do
         [
+          id: integer() | nil,
           int: integer() | nil,
           string: unquote(String).t() | nil,
           string_with_default: unquote(String).t(),
