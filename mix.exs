@@ -43,6 +43,7 @@ defmodule TypedStruct.MixProject do
       {:ex_unit_notifier, ">= 0.0.0", only: :test, runtime: false},
 
       # Project dependencies
+      {:ecto, "~> 3.1.7"},
 
       # Documentation dependencies
       {:ex_doc, "~> 0.19", only: :docs, runtime: false}
