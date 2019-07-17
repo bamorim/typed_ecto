@@ -8,10 +8,11 @@ defmodule TypedEctoSchemaTest do
 
       @primary_key false
       typed_embedded_schema do
-        typed_field(:int, :integer)
-        typed_field(:string, :string)
-        typed_field(:string_with_default, :string, default: "default")
-        typed_field(:mandatory_int, :integer, enforce: true)
+        field(:int, :integer)
+        field(:string, :string)
+        field(:string_with_default, :string, default: "default")
+        field(:mandatory_int, :integer, enforce: true)
+        field(:overriden_type, :integer) :: 1 | 2 | 3
       end
 
       def enforce_keys, do: @enforce_keys
@@ -23,7 +24,7 @@ defmodule TypedEctoSchemaTest do
 
       @primary_key false
       typed_embedded_schema opaque: true do
-        typed_field(:int, :integer)
+        field(:int, :integer)
       end
     end
 
@@ -32,10 +33,10 @@ defmodule TypedEctoSchemaTest do
 
     @primary_key false
     typed_embedded_schema enforce: true do
-      typed_field(:enforced_by_default, :integer)
-      typed_field(:not_enforced, :integer, enforce: false)
-      typed_field(:with_default, :integer, default: 1)
-      typed_field(:with_false_default, :boolean, default: false)
+      field(:enforced_by_default, :integer)
+      field(:not_enforced, :integer, enforce: false)
+      field(:with_default, :integer, default: 1)
+      field(:with_false_default, :boolean, default: false)
     end
 
     def enforce_keys, do: @enforce_keys
@@ -54,7 +55,8 @@ defmodule TypedEctoSchemaTest do
              :int,
              :string,
              :string_with_default,
-             :mandatory_int
+             :mandatory_int,
+             :overriden_type
            ]
   end
 
@@ -63,7 +65,8 @@ defmodule TypedEctoSchemaTest do
              int: nil,
              string: nil,
              string_with_default: "default",
-             mandatory_int: nil
+             mandatory_int: nil,
+             overriden_type: nil
            }
   end
 
@@ -91,13 +94,20 @@ defmodule TypedEctoSchemaTest do
     # Define a second struct with the type expected for TestStruct.
     {:module, _name, bytecode2, _exports} =
       defmodule TestStruct2 do
-        defstruct [:int, :string, :string_with_default, :mandatory_int]
+        defstruct [
+          :int,
+          :string,
+          :string_with_default,
+          :mandatory_int,
+          :overriden_type
+        ]
 
         @type t() :: %__MODULE__{
                 int: integer() | nil,
                 string: String.t() | nil,
                 string_with_default: String.t(),
-                mandatory_int: integer()
+                mandatory_int: integer(),
+                overriden_type: (1 | 2 | 3) | nil
               }
       end
 
@@ -140,20 +150,22 @@ defmodule TypedEctoSchemaTest do
   end
 
   test "generates a function to get the struct keys" do
-    assert TestStruct.__keys__() == [
+    assert TestStruct.__typed_schema__(:keys) == [
              :int,
              :string,
              :string_with_default,
-             :mandatory_int
+             :mandatory_int,
+             :overriden_type
            ]
   end
 
   test "generates a function to get the struct defaults" do
-    assert TestStruct.__defaults__() == [
+    assert TestStruct.__typed_schema__(:defaults) == [
              int: nil,
              string: nil,
              string_with_default: "default",
-             mandatory_int: nil
+             mandatory_int: nil,
+             overriden_type: nil
            ]
   end
 
@@ -162,13 +174,15 @@ defmodule TypedEctoSchemaTest do
       quote do
         [
           int: integer() | nil,
-          string: String.t() | nil,
-          string_with_default: String.t(),
-          mandatory_int: integer()
+          string: unquote(String).t() | nil,
+          string_with_default: unquote(String).t(),
+          mandatory_int: integer(),
+          overriden_type: (1 | 2 | 3) | nil
         ]
       end
 
-    assert delete_context(TestStruct.__types__()) == delete_context(types)
+    assert delete_context(TestStruct.__typed_schema__(:types)) ==
+             delete_context(types)
   end
 
   ## Problems
@@ -179,23 +193,25 @@ defmodule TypedEctoSchemaTest do
         use TypedEctoSchema
 
         typed_embedded_schema do
-          typed_field(3, :integer)
+          field(3, :integer)
         end
       end
     end
   end
 
   test "it is not possible to add twice a field with the same name" do
-    assert_raise ArgumentError, "the field :name is already set", fn ->
-      defmodule InvalidStruct do
-        use TypedEctoSchema
+    assert_raise ArgumentError,
+                 "field/association :name is already set on schema",
+                 fn ->
+                   defmodule InvalidStruct do
+                     use TypedEctoSchema
 
-        typed_embedded_schema do
-          typed_field(:name, :string)
-          typed_field(:name, :integer)
-        end
-      end
-    end
+                     typed_embedded_schema do
+                       field(:name, :string)
+                       field(:name, :integer)
+                     end
+                   end
+                 end
   end
 
   ##

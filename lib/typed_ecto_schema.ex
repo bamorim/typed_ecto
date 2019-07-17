@@ -10,66 +10,93 @@ defmodule TypedEctoSchema do
   end
 
   defmacro typed_embedded_schema(opts \\ [], do: block) do
+    calls =
+      case block do
+        {:__block__, _, calls} ->
+          calls
+
+        call ->
+          [call]
+      end
+
+    new_calls = Enum.map(calls, &apply_syntax_sugar/1)
+
+    new_block = {:__block__, [], new_calls}
+
     quote do
       Module.register_attribute(__MODULE__, :fields, accumulate: true)
       Module.register_attribute(__MODULE__, :types, accumulate: true)
       Module.register_attribute(__MODULE__, :keys_to_enforce, accumulate: true)
       Module.put_attribute(__MODULE__, :enforce?, unquote(!!opts[:enforce]))
 
-      import TypedEctoSchema
-
       Ecto.Schema.embedded_schema do
-        unquote(block)
+        unquote(new_block)
         @enforce_keys @keys_to_enforce
       end
 
       TypedEctoSchema.__type__(@types, unquote(opts))
 
-      def __keys__, do: @fields |> Keyword.keys() |> Enum.reverse()
-      def __defaults__, do: Enum.reverse(@fields)
-      def __types__, do: Enum.reverse(@types)
+      def __typed_schema__(:keys),
+        do: @fields |> Keyword.keys() |> Enum.reverse()
+
+      def __typed_schema__(:defaults), do: Enum.reverse(@fields)
+      def __typed_schema__(:types), do: Enum.reverse(@types)
     end
   end
 
-  defmacro typed_field(name, type, opts \\ []) do
-    ecto_opts = Keyword.drop(opts, [:enforce])
-    our_opts = Keyword.take(opts, [:enforce, :default])
+  defp apply_syntax_sugar({:field, _, [name, type, opts]}) do
+    ecto_opts = Keyword.drop(opts, [:__typed_ecto_type__, :enforce])
 
     quote do
-      TypedEctoSchema.__typed_field__(
+      field(unquote(name), unquote(type), unquote(ecto_opts))
+
+      TypedEctoSchema.__add_field__(
         __MODULE__,
         unquote(name),
         unquote(type),
-        unquote(our_opts)
+        unquote(opts)
       )
-
-      Ecto.Schema.field(unquote(name), unquote(type), unquote(ecto_opts))
     end
   end
+
+  defp apply_syntax_sugar({:field, _, [name, type]}) do
+    quote do
+      field(unquote(name), unquote(type))
+
+      TypedEctoSchema.__add_field__(
+        __MODULE__,
+        unquote(name),
+        unquote(type),
+        []
+      )
+    end
+  end
+
+  defp apply_syntax_sugar(
+         {:::, _, [{:field, _, [name, ecto_type, opts]}, type]}
+       ) do
+    apply_syntax_sugar(
+      {:field, [],
+       [name, ecto_type, [{:__typed_ecto_type__, Macro.escape(type)} | opts]]}
+    )
+  end
+
+  defp apply_syntax_sugar({:::, _, [{:field, _, [name, ecto_type]}, type]}) do
+    apply_syntax_sugar(
+      {:field, [], [name, ecto_type, [__typed_ecto_type__: Macro.escape(type)]]}
+    )
+  end
+
+  defp apply_syntax_sugar(other), do: other
 
   ##
   ## Callbacks
   ##
 
   @doc false
-  def __typed_field__(mod, name, ecto_type, opts) when is_atom(name) do
-    type =
-      case ecto_type do
-        :string ->
-          quote do
-            String.t()
-          end
-
-        :integer ->
-          quote do
-            integer()
-          end
-
-        :boolean ->
-          quote do
-            boolean()
-          end
-      end
+  def __add_field__(mod, name, ecto_type, opts) when is_atom(name) do
+    default_type = type_for(ecto_type)
+    type = Keyword.get(opts, :__typed_ecto_type__, default_type)
 
     if mod |> Module.get_attribute(:fields) |> Keyword.has_key?(name) do
       raise ArgumentError, "the field #{inspect(name)} is already set"
@@ -85,11 +112,17 @@ defmodule TypedEctoSchema do
     nullable? = !default && !enforce?
 
     Module.put_attribute(mod, :fields, {name, default})
-    Module.put_attribute(mod, :types, {name, type_for(type, nullable?)})
+
+    Module.put_attribute(
+      mod,
+      :types,
+      {name, add_nil_if_nullable(type, nullable?)}
+    )
+
     if enforce?, do: Module.put_attribute(mod, :keys_to_enforce, name)
   end
 
-  def __typed_field__(_mod, name, _type, _opts) do
+  def __add_field__(_mod, name, _type, _opts) do
     raise ArgumentError, "a field name must be an atom, got #{inspect(name)}"
   end
 
@@ -110,7 +143,72 @@ defmodule TypedEctoSchema do
   ## Helpers
   ##
 
+  # Gets the type for a given Ecto.Type.t()
+  @type_t_module_map %{
+    string: String,
+    decimal: Decimal,
+    date: Date,
+    time: Time,
+    time_usec: Time,
+    naive_datetime: NaiveDateTime,
+    naive_datetime_usec: NaiveDateTime,
+    utc_datetime: DateTime,
+    utc_datetime_usec: DateTime
+  }
+  @type_t_module_keys Map.keys(@type_t_module_map)
+  @direct_types [:integer, :float, :boolean, :map, :binary]
+
+  defp type_for(atom) when atom in @type_t_module_keys do
+    quote do
+      unquote(Map.get(@type_t_module_map, atom)).t()
+    end
+  end
+
+  defp type_for(atom) when atom in @direct_types do
+    quote do
+      unquote(atom)()
+    end
+  end
+
+  defp type_for(:binary_id) do
+    quote do
+      binary()
+    end
+  end
+
+  defp type_for({:array, type}) do
+    quote do
+      list(unquote(type_for(type)))
+    end
+  end
+
+  defp type_for({:map, type}) do
+    quote do
+      %{optional(any()) => unquote(type_for(type))}
+    end
+  end
+
+  defp type_for(atom) when is_atom(atom) do
+    case to_string(atom) do
+      "Elixir." <> _ ->
+        quote do
+          unquote(atom).t()
+        end
+
+      _ ->
+        quote do
+          any()
+        end
+    end
+  end
+
+  defp type_for(_) do
+    quote do
+      any()
+    end
+  end
+
   # Makes the type nullable if the key is not enforced.
-  defp type_for(type, false), do: type
-  defp type_for(type, _), do: quote(do: unquote(type) | nil)
+  defp add_nil_if_nullable(type, false), do: type
+  defp add_nil_if_nullable(type, _), do: quote(do: unquote(type) | nil)
 end
