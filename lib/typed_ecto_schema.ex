@@ -80,7 +80,14 @@ defmodule TypedEctoSchema do
     end
   end
 
-  @macro_names [:field, :embeds_one, :embeds_many]
+  @macro_names [
+    :field,
+    :embeds_one,
+    :embeds_many,
+    :has_one,
+    :has_many,
+    :belongs_to
+  ]
 
   defp apply_syntax_sugar({macro, _, [name, type, opts]})
        when macro in @macro_names do
@@ -171,7 +178,7 @@ defmodule TypedEctoSchema do
     base_type = type_for(ecto_type)
 
     default_type =
-      if macro == :embeds_many do
+      if macro in [:embeds_many, :has_many] do
         quote do
           list(unquote(base_type))
         end
@@ -199,7 +206,7 @@ defmodule TypedEctoSchema do
     Module.put_attribute(
       mod,
       :types,
-      {name, add_nil_if_nullable(type, nullable?)}
+      {name, add_nil_or_not_loaded(type, macro, nullable?)}
     )
 
     if enforce?, do: Module.put_attribute(mod, :keys_to_enforce, name)
@@ -298,6 +305,15 @@ defmodule TypedEctoSchema do
   end
 
   # Makes the type nullable if the key is not enforced.
-  defp add_nil_if_nullable(type, false), do: type
-  defp add_nil_if_nullable(type, _), do: quote(do: unquote(type) | nil)
+  @association_macros [
+    :has_many,
+    :has_one,
+    :belongs_to
+  ]
+  defp add_nil_or_not_loaded(type, _, false), do: type
+
+  defp add_nil_or_not_loaded(type, macro, _) when macro in @association_macros,
+    do: quote(do: unquote(type) | Ecto.Association.NotLoaded.t())
+
+  defp add_nil_or_not_loaded(type, _, _), do: quote(do: unquote(type) | nil)
 end

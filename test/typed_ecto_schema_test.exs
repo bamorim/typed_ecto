@@ -2,11 +2,34 @@ defmodule TypedEctoSchemaTest do
   use ExUnit.Case
 
   # Store the bytecode so we can get information from it.
-  defmodule StructToEmbed do
+  defmodule Embedded do
     use TypedEctoSchema
 
-    @primary_key false
     typed_embedded_schema do
+      field(:int, :integer)
+    end
+  end
+
+  defmodule HasOne do
+    use TypedEctoSchema
+
+    typed_schema "has_one" do
+      field(:table_id, :integer)
+    end
+  end
+
+  defmodule HasMany do
+    use TypedEctoSchema
+
+    typed_schema "has_many" do
+      field(:table_id, :integer)
+    end
+  end
+
+  defmodule BelongsTo do
+    use TypedEctoSchema
+
+    typed_schema "belongs" do
       field(:int, :integer)
     end
   end
@@ -22,8 +45,11 @@ defmodule TypedEctoSchemaTest do
         field(:mandatory_int, :integer, enforce: true)
         field(:overriden_type, :integer) :: 1 | 2 | 3
         field(:overriden_string) :: any()
-        embeds_one(:embed, StructToEmbed)
-        embeds_many(:embeds, StructToEmbed)
+        embeds_one(:embed, Embedded)
+        embeds_many(:embeds, Embedded)
+        has_one(:has_one, HasOne)
+        has_many(:has_many, HasMany)
+        belongs_to(:belongs_to, BelongsTo)
       end
 
       def enforce_keys, do: @enforce_keys
@@ -71,7 +97,10 @@ defmodule TypedEctoSchemaTest do
              :overriden_type,
              :overriden_string,
              :embed,
-             :embeds
+             :embeds,
+             :has_one,
+             :has_many,
+             :belongs_to
            ]
   end
 
@@ -85,7 +114,22 @@ defmodule TypedEctoSchemaTest do
              overriden_type: nil,
              overriden_string: nil,
              embed: nil,
-             embeds: []
+             embeds: [],
+             has_many: %Ecto.Association.NotLoaded{
+               __field__: :has_many,
+               __owner__: TestStruct,
+               __cardinality__: :many
+             },
+             has_one: %Ecto.Association.NotLoaded{
+               __field__: :has_one,
+               __owner__: TestStruct,
+               __cardinality__: :one
+             },
+             belongs_to: %Ecto.Association.NotLoaded{
+               __field__: :belongs_to,
+               __owner__: TestStruct,
+               __cardinality__: :one
+             }
            }
   end
 
@@ -122,8 +166,11 @@ defmodule TypedEctoSchemaTest do
           field(:mandatory_int, :integer)
           field(:overriden_type, :integer)
           field(:overriden_string)
-          embeds_one(:embed, StructToEmbed)
-          embeds_many(:embeds, StructToEmbed)
+          embeds_one(:embed, Embedded)
+          embeds_many(:embeds, Embedded)
+          has_one(:has_one, HasOne)
+          has_many(:has_many, HasMany)
+          belongs_to(:belongs_to, BelongsTo)
         end
 
         @type t() :: %__MODULE__{
@@ -134,8 +181,11 @@ defmodule TypedEctoSchemaTest do
                 mandatory_int: integer(),
                 overriden_type: (1 | 2 | 3) | nil,
                 overriden_string: any() | nil,
-                embed: StructToEmbed.t() | nil,
-                embeds: list(StructToEmbed.t())
+                embed: Embedded.t() | nil,
+                embeds: list(Embedded.t()),
+                has_one: HasOne.t() | Ecto.Association.NotLoaded.t(),
+                has_many: list(HasMany.t()) | Ecto.Association.NotLoaded.t(),
+                belongs_to: BelongsTo.t() | Ecto.Association.NotLoaded.t()
               }
       end
 
@@ -187,7 +237,10 @@ defmodule TypedEctoSchemaTest do
              :overriden_type,
              :overriden_string,
              :embed,
-             :embeds
+             :embeds,
+             :has_one,
+             :has_many,
+             :belongs_to
            ]
   end
 
@@ -202,8 +255,11 @@ defmodule TypedEctoSchemaTest do
           mandatory_int: integer(),
           overriden_type: (1 | 2 | 3) | nil,
           overriden_string: any() | nil,
-          embed: unquote(StructToEmbed).t() | nil,
-          embeds: list(unquote(StructToEmbed).t())
+          embed: unquote(Embedded).t() | nil,
+          embeds: list(unquote(Embedded).t()),
+          has_one: unquote(HasOne).t() | Ecto.Association.NotLoaded.t(),
+          has_many: list(unquote(HasMany).t()) | Ecto.Association.NotLoaded.t(),
+          belongs_to: unquote(BelongsTo).t() | Ecto.Association.NotLoaded.t()
         ]
       end
 
