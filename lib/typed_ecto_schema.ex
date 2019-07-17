@@ -36,22 +36,23 @@ defmodule TypedEctoSchema do
 
       TypedEctoSchema.__type__(@types, unquote(opts))
 
-      def __typed_schema__(:keys),
-        do: @fields |> Keyword.keys() |> Enum.reverse()
-
-      def __typed_schema__(:defaults), do: Enum.reverse(@fields)
+      def __typed_schema__(:keys), do: Enum.reverse(@fields)
       def __typed_schema__(:types), do: Enum.reverse(@types)
     end
   end
 
-  defp apply_syntax_sugar({:field, _, [name, type, opts]}) do
+  @macro_names [:field, :embeds_one, :embeds_many]
+
+  defp apply_syntax_sugar({macro, _, [name, type, opts]})
+       when macro in @macro_names do
     ecto_opts = Keyword.drop(opts, [:__typed_ecto_type__, :enforce])
 
     quote do
-      field(unquote(name), unquote(type), unquote(ecto_opts))
+      unquote(macro)(unquote(name), unquote(type), unquote(ecto_opts))
 
       TypedEctoSchema.__add_field__(
         __MODULE__,
+        unquote(macro),
         unquote(name),
         unquote(type),
         unquote(opts)
@@ -59,12 +60,14 @@ defmodule TypedEctoSchema do
     end
   end
 
-  defp apply_syntax_sugar({:field, _, [name, type]}) do
+  defp apply_syntax_sugar({macro, _, [name, type]})
+       when macro in @macro_names do
     quote do
-      field(unquote(name), unquote(type))
+      unquote(macro)(unquote(name), unquote(type))
 
       TypedEctoSchema.__add_field__(
         __MODULE__,
+        unquote(macro),
         unquote(name),
         unquote(type),
         []
@@ -72,18 +75,18 @@ defmodule TypedEctoSchema do
     end
   end
 
-  defp apply_syntax_sugar(
-         {:::, _, [{:field, _, [name, ecto_type, opts]}, type]}
-       ) do
+  defp apply_syntax_sugar({:::, _, [{macro, _, [name, ecto_type, opts]}, type]})
+       when macro in @macro_names do
     apply_syntax_sugar(
-      {:field, [],
+      {macro, [],
        [name, ecto_type, [{:__typed_ecto_type__, Macro.escape(type)} | opts]]}
     )
   end
 
-  defp apply_syntax_sugar({:::, _, [{:field, _, [name, ecto_type]}, type]}) do
+  defp apply_syntax_sugar({:::, _, [{macro, _, [name, ecto_type]}, type]})
+       when macro in @macro_names do
     apply_syntax_sugar(
-      {:field, [], [name, ecto_type, [__typed_ecto_type__: Macro.escape(type)]]}
+      {macro, [], [name, ecto_type, [__typed_ecto_type__: Macro.escape(type)]]}
     )
   end
 
@@ -94,11 +97,21 @@ defmodule TypedEctoSchema do
   ##
 
   @doc false
-  def __add_field__(mod, name, ecto_type, opts) when is_atom(name) do
-    default_type = type_for(ecto_type)
+  def __add_field__(mod, macro, name, ecto_type, opts) when is_atom(name) do
+    base_type = type_for(ecto_type)
+
+    default_type =
+      if macro == :embeds_many do
+        quote do
+          list(unquote(base_type))
+        end
+      else
+        base_type
+      end
+
     type = Keyword.get(opts, :__typed_ecto_type__, default_type)
 
-    if mod |> Module.get_attribute(:fields) |> Keyword.has_key?(name) do
+    if mod |> Module.get_attribute(:fields) |> Enum.member?(name) do
       raise ArgumentError, "the field #{inspect(name)} is already set"
     end
 
@@ -109,9 +122,9 @@ defmodule TypedEctoSchema do
         do: Module.get_attribute(mod, :enforce?) && is_nil(default),
         else: !!opts[:enforce]
 
-    nullable? = !default && !enforce?
+    nullable? = macro != :embeds_many && !default && !enforce?
 
-    Module.put_attribute(mod, :fields, {name, default})
+    Module.put_attribute(mod, :fields, name)
 
     Module.put_attribute(
       mod,
@@ -122,7 +135,7 @@ defmodule TypedEctoSchema do
     if enforce?, do: Module.put_attribute(mod, :keys_to_enforce, name)
   end
 
-  def __add_field__(_mod, name, _type, _opts) do
+  def __add_field__(_mod, _macro, name, _type, _opts) do
     raise ArgumentError, "a field name must be an atom, got #{inspect(name)}"
   end
 

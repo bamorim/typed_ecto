@@ -2,6 +2,15 @@ defmodule TypedEctoSchemaTest do
   use ExUnit.Case
 
   # Store the bytecode so we can get information from it.
+  defmodule StructToEmbed do
+    use TypedEctoSchema
+
+    @primary_key false
+    typed_embedded_schema do
+      field(:int, :integer)
+    end
+  end
+
   {:module, _name, bytecode, _exports} =
     defmodule TestStruct do
       use TypedEctoSchema
@@ -13,6 +22,8 @@ defmodule TypedEctoSchemaTest do
         field(:string_with_default, :string, default: "default")
         field(:mandatory_int, :integer, enforce: true)
         field(:overriden_type, :integer) :: 1 | 2 | 3
+        embeds_one(:embed, StructToEmbed)
+        embeds_many(:embeds, StructToEmbed)
       end
 
       def enforce_keys, do: @enforce_keys
@@ -56,7 +67,9 @@ defmodule TypedEctoSchemaTest do
              :string,
              :string_with_default,
              :mandatory_int,
-             :overriden_type
+             :overriden_type,
+             :embed,
+             :embeds
            ]
   end
 
@@ -66,7 +79,9 @@ defmodule TypedEctoSchemaTest do
              string: nil,
              string_with_default: "default",
              mandatory_int: nil,
-             overriden_type: nil
+             overriden_type: nil,
+             embed: nil,
+             embeds: []
            }
   end
 
@@ -99,7 +114,9 @@ defmodule TypedEctoSchemaTest do
           :string,
           :string_with_default,
           :mandatory_int,
-          :overriden_type
+          :overriden_type,
+          :embed,
+          :embeds
         ]
 
         @type t() :: %__MODULE__{
@@ -107,7 +124,9 @@ defmodule TypedEctoSchemaTest do
                 string: String.t() | nil,
                 string_with_default: String.t(),
                 mandatory_int: integer(),
-                overriden_type: (1 | 2 | 3) | nil
+                overriden_type: (1 | 2 | 3) | nil,
+                embed: StructToEmbed.t() | nil,
+                embeds: list(StructToEmbed.t())
               }
       end
 
@@ -155,17 +174,9 @@ defmodule TypedEctoSchemaTest do
              :string,
              :string_with_default,
              :mandatory_int,
-             :overriden_type
-           ]
-  end
-
-  test "generates a function to get the struct defaults" do
-    assert TestStruct.__typed_schema__(:defaults) == [
-             int: nil,
-             string: nil,
-             string_with_default: "default",
-             mandatory_int: nil,
-             overriden_type: nil
+             :overriden_type,
+             :embed,
+             :embeds
            ]
   end
 
@@ -177,7 +188,9 @@ defmodule TypedEctoSchemaTest do
           string: unquote(String).t() | nil,
           string_with_default: unquote(String).t(),
           mandatory_int: integer(),
-          overriden_type: (1 | 2 | 3) | nil
+          overriden_type: (1 | 2 | 3) | nil,
+          embed: unquote(StructToEmbed).t() | nil,
+          embeds: list(unquote(StructToEmbed).t())
         ]
       end
 
