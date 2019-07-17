@@ -3,13 +3,46 @@ defmodule TypedEctoSchema do
   defmacro __using__(_) do
     quote do
       import TypedEctoSchema,
-        only: [typed_embedded_schema: 1, typed_embedded_schema: 2]
+        only: [
+          typed_embedded_schema: 1,
+          typed_embedded_schema: 2,
+          typed_schema: 2,
+          typed_schema: 3
+        ]
 
       use Ecto.Schema
     end
   end
 
   defmacro typed_embedded_schema(opts \\ [], do: block) do
+    __typed_schema__(
+      opts,
+      block,
+      fn inner ->
+        quote do
+          Ecto.Schema.embedded_schema do
+            unquote(inner)
+          end
+        end
+      end
+    )
+  end
+
+  defmacro typed_schema(table_name, opts \\ [], do: block) do
+    __typed_schema__(
+      opts,
+      block,
+      fn inner ->
+        quote do
+          Ecto.Schema.schema unquote(table_name) do
+            unquote(inner)
+          end
+        end
+      end
+    )
+  end
+
+  defp __typed_schema__(opts, block, wrapper) do
     calls =
       case block do
         {:__block__, _, calls} ->
@@ -23,16 +56,21 @@ defmodule TypedEctoSchema do
 
     new_block = {:__block__, [], new_calls}
 
+    wrapped_block =
+      wrapper.(
+        quote do
+          unquote(new_block)
+          @enforce_keys @keys_to_enforce
+        end
+      )
+
     quote do
       Module.register_attribute(__MODULE__, :fields, accumulate: true)
       Module.register_attribute(__MODULE__, :types, accumulate: true)
       Module.register_attribute(__MODULE__, :keys_to_enforce, accumulate: true)
       Module.put_attribute(__MODULE__, :enforce?, unquote(!!opts[:enforce]))
 
-      Ecto.Schema.embedded_schema do
-        unquote(new_block)
-        @enforce_keys @keys_to_enforce
-      end
+      unquote(wrapped_block)
 
       TypedEctoSchema.__type__(@types, unquote(opts))
 

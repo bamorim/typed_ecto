@@ -16,7 +16,7 @@ defmodule TypedEctoSchemaTest do
       use TypedEctoSchema
 
       @primary_key false
-      typed_embedded_schema do
+      typed_schema "table" do
         field(:int, :integer)
         field(:string)
         field(:string_with_default, :string, default: "default")
@@ -112,16 +112,19 @@ defmodule TypedEctoSchemaTest do
     # Define a second struct with the type expected for TestStruct.
     {:module, _name, bytecode2, _exports} =
       defmodule TestStruct2 do
-        defstruct [
-          :int,
-          :string,
-          :string_with_default,
-          :mandatory_int,
-          :overriden_type,
-          :overriden_string,
-          :embed,
-          :embeds
-        ]
+        use Ecto.Schema
+
+        @primary_key false
+        schema "table" do
+          field(:int, :integer)
+          field(:string)
+          field(:string_with_default, :string, default: "default")
+          field(:mandatory_int, :integer)
+          field(:overriden_type, :integer)
+          field(:overriden_string)
+          embeds_one(:embed, StructToEmbed)
+          embeds_many(:embeds, StructToEmbed)
+        end
 
         @type t() :: %__MODULE__{
                 int: integer() | nil,
