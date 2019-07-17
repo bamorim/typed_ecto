@@ -75,6 +75,20 @@ defmodule TypedEctoSchema do
     end
   end
 
+  defp apply_syntax_sugar({:field, _, [name]}) do
+    quote do
+      field(unquote(name))
+
+      TypedEctoSchema.__add_field__(
+        __MODULE__,
+        :field,
+        unquote(name),
+        :string,
+        []
+      )
+    end
+  end
+
   defp apply_syntax_sugar({:::, _, [{macro, _, [name, ecto_type, opts]}, type]})
        when macro in @macro_names do
     apply_syntax_sugar(
@@ -87,6 +101,12 @@ defmodule TypedEctoSchema do
        when macro in @macro_names do
     apply_syntax_sugar(
       {macro, [], [name, ecto_type, [__typed_ecto_type__: Macro.escape(type)]]}
+    )
+  end
+
+  defp apply_syntax_sugar({:::, _, [{:field, _, [name]}, type]}) do
+    apply_syntax_sugar(
+      {:field, [], [name, :string, [__typed_ecto_type__: Macro.escape(type)]]}
     )
   end
 

@@ -18,10 +18,11 @@ defmodule TypedEctoSchemaTest do
       @primary_key false
       typed_embedded_schema do
         field(:int, :integer)
-        field(:string, :string)
+        field(:string)
         field(:string_with_default, :string, default: "default")
         field(:mandatory_int, :integer, enforce: true)
         field(:overriden_type, :integer) :: 1 | 2 | 3
+        field(:overriden_string) :: any()
         embeds_one(:embed, StructToEmbed)
         embeds_many(:embeds, StructToEmbed)
       end
@@ -68,6 +69,7 @@ defmodule TypedEctoSchemaTest do
              :string_with_default,
              :mandatory_int,
              :overriden_type,
+             :overriden_string,
              :embed,
              :embeds
            ]
@@ -80,6 +82,7 @@ defmodule TypedEctoSchemaTest do
              string_with_default: "default",
              mandatory_int: nil,
              overriden_type: nil,
+             overriden_string: nil,
              embed: nil,
              embeds: []
            }
@@ -115,6 +118,7 @@ defmodule TypedEctoSchemaTest do
           :string_with_default,
           :mandatory_int,
           :overriden_type,
+          :overriden_string,
           :embed,
           :embeds
         ]
@@ -125,6 +129,7 @@ defmodule TypedEctoSchemaTest do
                 string_with_default: String.t(),
                 mandatory_int: integer(),
                 overriden_type: (1 | 2 | 3) | nil,
+                overriden_string: any() | nil,
                 embed: StructToEmbed.t() | nil,
                 embeds: list(StructToEmbed.t())
               }
@@ -175,6 +180,7 @@ defmodule TypedEctoSchemaTest do
              :string_with_default,
              :mandatory_int,
              :overriden_type,
+             :overriden_string,
              :embed,
              :embeds
            ]
@@ -189,6 +195,7 @@ defmodule TypedEctoSchemaTest do
           string_with_default: unquote(String).t(),
           mandatory_int: integer(),
           overriden_type: (1 | 2 | 3) | nil,
+          overriden_string: any() | nil,
           embed: unquote(StructToEmbed).t() | nil,
           embeds: list(unquote(StructToEmbed).t())
         ]
