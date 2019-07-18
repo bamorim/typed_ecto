@@ -41,8 +41,8 @@ defmodule TypedEctoSchemaTest do
       typed_schema "table" do
         field(:int, :integer)
         field(:string)
-        field(:string_with_default, :string, default: "default")
-        field(:mandatory_int, :integer, enforce: true)
+        field(:non_nullable_string, :string, null: false)
+        field(:enforced_int, :integer, enforce: true)
         field(:overriden_type, :integer) :: 1 | 2 | 3
         field(:overriden_string) :: any()
         embeds_one(:embed, Embedded)
@@ -79,6 +79,18 @@ defmodule TypedEctoSchemaTest do
     def enforce_keys, do: @enforce_keys
   end
 
+  defmodule NotNullTypedEctoSchema do
+    use TypedEctoSchema
+
+    @primary_key false
+    typed_embedded_schema null: false do
+      field(:normal, :integer)
+      field(:enforced, :integer, enforce: false)
+      field(:overriden, :integer, null: true)
+      belongs_to(:belongs_to, BelongsTo)
+    end
+  end
+
   @bytecode bytecode
   @bytecode_opaque bytecode_opaque
 
@@ -92,15 +104,13 @@ defmodule TypedEctoSchemaTest do
              :id,
              :int,
              :string,
-             :string_with_default,
-             :mandatory_int,
+             :non_nullable_string,
+             :enforced_int,
              :overriden_type,
              :overriden_string,
              :embed,
              :embeds,
-             :has_one,
-             :has_many,
-             :belongs_to
+             :belongs_to_id
            ]
   end
 
@@ -109,8 +119,8 @@ defmodule TypedEctoSchemaTest do
              id: nil,
              int: nil,
              string: nil,
-             string_with_default: "default",
-             mandatory_int: nil,
+             non_nullable_string: nil,
+             enforced_int: nil,
              overriden_type: nil,
              overriden_string: nil,
              embed: nil,
@@ -134,7 +144,7 @@ defmodule TypedEctoSchemaTest do
   end
 
   test "enforces keys for fields with `enforce: true`" do
-    assert TestStruct.enforce_keys() == [:mandatory_int]
+    assert TestStruct.enforce_keys() == [:enforced_int]
   end
 
   test "enforces keys by default if `enforce: true` is set at top-level" do
@@ -162,8 +172,8 @@ defmodule TypedEctoSchemaTest do
         schema "table" do
           field(:int, :integer)
           field(:string)
-          field(:string_with_default, :string, default: "default")
-          field(:mandatory_int, :integer)
+          field(:non_nullable_string, :string, default: "default")
+          field(:enforced_int, :integer)
           field(:overriden_type, :integer)
           field(:overriden_string)
           embeds_one(:embed, Embedded)
@@ -177,15 +187,16 @@ defmodule TypedEctoSchemaTest do
                 id: integer() | nil,
                 int: integer() | nil,
                 string: String.t() | nil,
-                string_with_default: String.t(),
-                mandatory_int: integer(),
-                overriden_type: (1 | 2 | 3) | nil,
-                overriden_string: any() | nil,
+                non_nullable_string: String.t(),
+                enforced_int: integer() | nil,
+                overriden_type: 1 | 2 | 3,
+                overriden_string: any(),
                 embed: Embedded.t() | nil,
                 embeds: list(Embedded.t()),
-                has_one: HasOne.t() | Ecto.Association.NotLoaded.t(),
+                has_one: (HasOne.t() | Ecto.Association.NotLoaded.t()) | nil,
                 has_many: list(HasMany.t()) | Ecto.Association.NotLoaded.t(),
-                belongs_to: BelongsTo.t() | Ecto.Association.NotLoaded.t()
+                belongs_to:
+                  (BelongsTo.t() | Ecto.Association.NotLoaded.t()) | nil
               }
       end
 
@@ -232,8 +243,8 @@ defmodule TypedEctoSchemaTest do
              :id,
              :int,
              :string,
-             :string_with_default,
-             :mandatory_int,
+             :non_nullable_string,
+             :enforced_int,
              :overriden_type,
              :overriden_string,
              :embed,
@@ -251,19 +262,35 @@ defmodule TypedEctoSchemaTest do
           id: integer() | nil,
           int: integer() | nil,
           string: unquote(String).t() | nil,
-          string_with_default: unquote(String).t(),
-          mandatory_int: integer(),
-          overriden_type: (1 | 2 | 3) | nil,
-          overriden_string: any() | nil,
+          non_nullable_string: unquote(String).t(),
+          enforced_int: integer() | nil,
+          overriden_type: 1 | 2 | 3,
+          overriden_string: any(),
           embed: unquote(Embedded).t() | nil,
           embeds: list(unquote(Embedded).t()),
-          has_one: unquote(HasOne).t() | Ecto.Association.NotLoaded.t(),
+          has_one: (unquote(HasOne).t() | Ecto.Association.NotLoaded.t()) | nil,
           has_many: list(unquote(HasMany).t()) | Ecto.Association.NotLoaded.t(),
-          belongs_to: unquote(BelongsTo).t() | Ecto.Association.NotLoaded.t()
+          belongs_to:
+            (unquote(BelongsTo).t() | Ecto.Association.NotLoaded.t()) | nil
         ]
       end
 
     assert delete_context(TestStruct.__typed_schema__(:types)) ==
+             delete_context(types)
+  end
+
+  test "nulls can be specified by default" do
+    types =
+      quote do
+        [
+          normal: integer(),
+          enforced: integer(),
+          overriden: integer() | nil,
+          belongs_to: unquote(BelongsTo).t() | Ecto.Association.NotLoaded.t()
+        ]
+      end
+
+    assert delete_context(NotNullTypedEctoSchema.__typed_schema__(:types)) ==
              delete_context(types)
   end
 

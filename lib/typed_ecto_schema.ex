@@ -1,4 +1,36 @@
 defmodule TypedEctoSchema do
+  @schema_macros [
+    :field,
+    :embeds_one,
+    :embeds_many,
+    :has_one,
+    :has_many,
+    :belongs_to
+  ]
+
+  @schema_many_macros [:embeds_many, :has_many]
+
+  @schema_assoc_macros [
+    :has_many,
+    :has_one,
+    :belongs_to
+  ]
+
+  @module_for_ecto_type %{
+    string: String,
+    decimal: Decimal,
+    date: Date,
+    time: Time,
+    time_usec: Time,
+    naive_datetime: NaiveDateTime,
+    naive_datetime_usec: NaiveDateTime,
+    utc_datetime: DateTime,
+    utc_datetime_usec: DateTime
+  }
+
+  @module_for_ecto_type_keys Map.keys(@module_for_ecto_type)
+  @direct_types [:integer, :float, :boolean, :map, :binary]
+
   @doc false
   defmacro __using__(_) do
     quote do
@@ -65,11 +97,15 @@ defmodule TypedEctoSchema do
         end
       )
 
+    enforce? = Keyword.get(opts, :enforce, false)
+    null? = Keyword.get(opts, :null, true)
+
     quote do
       Module.register_attribute(__MODULE__, :fields, accumulate: true)
       Module.register_attribute(__MODULE__, :types, accumulate: true)
       Module.register_attribute(__MODULE__, :keys_to_enforce, accumulate: true)
-      Module.put_attribute(__MODULE__, :enforce?, unquote(!!opts[:enforce]))
+      Module.put_attribute(__MODULE__, :enforce?, unquote(enforce?))
+      Module.put_attribute(__MODULE__, :null?, unquote(null?))
 
       unquote(wrapped_block)
 
@@ -80,17 +116,8 @@ defmodule TypedEctoSchema do
     end
   end
 
-  @macro_names [
-    :field,
-    :embeds_one,
-    :embeds_many,
-    :has_one,
-    :has_many,
-    :belongs_to
-  ]
-
   defp apply_syntax_sugar({macro, _, [name, type, opts]})
-       when macro in @macro_names do
+       when macro in @schema_macros do
     ecto_opts = Keyword.drop(opts, [:__typed_ecto_type__, :enforce])
 
     quote do
@@ -107,7 +134,7 @@ defmodule TypedEctoSchema do
   end
 
   defp apply_syntax_sugar({macro, _, [name, type]})
-       when macro in @macro_names do
+       when macro in @schema_macros do
     quote do
       unquote(macro)(unquote(name), unquote(type))
 
@@ -136,7 +163,7 @@ defmodule TypedEctoSchema do
   end
 
   defp apply_syntax_sugar({:::, _, [{macro, _, [name, ecto_type, opts]}, type]})
-       when macro in @macro_names do
+       when macro in @schema_macros do
     apply_syntax_sugar(
       {macro, [],
        [name, ecto_type, [{:__typed_ecto_type__, Macro.escape(type)} | opts]]}
@@ -144,7 +171,7 @@ defmodule TypedEctoSchema do
   end
 
   defp apply_syntax_sugar({:::, _, [{macro, _, [name, ecto_type]}, type]})
-       when macro in @macro_names do
+       when macro in @schema_macros do
     apply_syntax_sugar(
       {macro, [], [name, ecto_type, [__typed_ecto_type__: Macro.escape(type)]]}
     )
@@ -174,42 +201,22 @@ defmodule TypedEctoSchema do
   end
 
   @doc false
+  # | default | many | has_default |
+  # | true
   def __add_field__(mod, macro, name, ecto_type, opts) when is_atom(name) do
-    base_type = type_for(ecto_type)
-
-    default_type =
-      if macro in [:embeds_many, :has_many] do
-        quote do
-          list(unquote(base_type))
-        end
-      else
-        base_type
-      end
-
-    type = Keyword.get(opts, :__typed_ecto_type__, default_type)
-
-    if mod |> Module.get_attribute(:fields) |> Enum.member?(name) do
-      raise ArgumentError, "the field #{inspect(name)} is already set"
-    end
-
-    default = opts[:default]
-
-    enforce? =
-      if is_nil(opts[:enforce]),
-        do: Module.get_attribute(mod, :enforce?) && is_nil(default),
-        else: !!opts[:enforce]
-
-    nullable? = macro != :embeds_many && !default && !enforce?
+    type =
+      ecto_type
+      |> type_for()
+      |> wrap_in_list_if_many(macro)
+      |> add_not_loaded_if_assoc(macro)
+      |> add_nil_if_nullable(field_is_nullable?(mod, macro, opts))
+      |> override_type(opts)
 
     Module.put_attribute(mod, :fields, name)
+    Module.put_attribute(mod, :types, {name, type})
 
-    Module.put_attribute(
-      mod,
-      :types,
-      {name, add_nil_or_not_loaded(type, macro, nullable?)}
-    )
-
-    if enforce?, do: Module.put_attribute(mod, :keys_to_enforce, name)
+    if field_is_enforced?(mod, opts),
+      do: Module.put_attribute(mod, :keys_to_enforce, name)
   end
 
   def __add_field__(_mod, _macro, name, _type, _opts) do
@@ -234,23 +241,9 @@ defmodule TypedEctoSchema do
   ##
 
   # Gets the type for a given Ecto.Type.t()
-  @type_t_module_map %{
-    string: String,
-    decimal: Decimal,
-    date: Date,
-    time: Time,
-    time_usec: Time,
-    naive_datetime: NaiveDateTime,
-    naive_datetime_usec: NaiveDateTime,
-    utc_datetime: DateTime,
-    utc_datetime_usec: DateTime
-  }
-  @type_t_module_keys Map.keys(@type_t_module_map)
-  @direct_types [:integer, :float, :boolean, :map, :binary]
-
-  defp type_for(atom) when atom in @type_t_module_keys do
+  defp type_for(atom) when atom in @module_for_ecto_type_keys do
     quote do
-      unquote(Map.get(@type_t_module_map, atom)).t()
+      unquote(Map.get(@module_for_ecto_type, atom)).t()
     end
   end
 
@@ -304,16 +297,45 @@ defmodule TypedEctoSchema do
     end
   end
 
-  # Makes the type nullable if the key is not enforced.
-  @association_macros [
-    :has_many,
-    :has_one,
-    :belongs_to
-  ]
-  defp add_nil_or_not_loaded(type, _, false), do: type
+  ##
+  ## Type Transformations Helpers
+  ##
 
-  defp add_nil_or_not_loaded(type, macro, _) when macro in @association_macros,
-    do: quote(do: unquote(type) | Ecto.Association.NotLoaded.t())
+  defp wrap_in_list_if_many(type, macro) when macro in @schema_many_macros do
+    quote do
+      list(unquote(type))
+    end
+  end
 
-  defp add_nil_or_not_loaded(type, _, _), do: quote(do: unquote(type) | nil)
+  defp wrap_in_list_if_many(type, _), do: type
+
+  defp add_not_loaded_if_assoc(type, macro)
+       when macro in @schema_assoc_macros do
+    quote(do: unquote(type) | Ecto.Association.NotLoaded.t())
+  end
+
+  defp add_not_loaded_if_assoc(type, _), do: type
+
+  defp add_nil_if_nullable(type, false), do: type
+  defp add_nil_if_nullable(type, true), do: quote(do: unquote(type) | nil)
+
+  defp override_type(type, opts),
+    do: Keyword.get(opts, :__typed_ecto_type__, type)
+
+  ##
+  ## Field Information Helpers
+  ##
+
+  defp field_is_nullable?(_mod, macro, _opts) when macro in @schema_many_macros,
+    do: false
+
+  defp field_is_nullable?(mod, _macro, opts) do
+    Keyword.get(opts, :null, Module.get_attribute(mod, :null?))
+  end
+
+  defp field_is_enforced?(mod, opts) do
+    global_enforce = Module.get_attribute(mod, :enforce?)
+    default_enforce = global_enforce && is_nil(opts[:default])
+    Keyword.get(opts, :enforce, default_enforce)
+  end
 end
