@@ -1,15 +1,6 @@
 defmodule TypedEctoSchema.EctoTypeMapper do
   @moduledoc false
 
-  @schema_macros [
-    :field,
-    :embeds_one,
-    :embeds_many,
-    :has_one,
-    :has_many,
-    :belongs_to
-  ]
-
   @schema_many_macros [:embeds_many, :has_many]
 
   @schema_assoc_macros [
@@ -42,13 +33,16 @@ defmodule TypedEctoSchema.EctoTypeMapper do
           | :has_one
           | :has_many
           | :belongs_to
+
   @type nullable_default :: true | false
+
+  @type field_option :: {:null, boolean()}
 
   @spec type_for(
           Ecto.Type.t(),
           macros(),
           nullable_default,
-          list({atom(), any()})
+          list(field_option())
         ) :: any()
   def type_for(ecto_type, macro, nullable_default, opts) do
     ecto_type
@@ -56,7 +50,6 @@ defmodule TypedEctoSchema.EctoTypeMapper do
     |> wrap_in_list_if_many(macro)
     |> add_not_loaded_if_assoc(macro)
     |> add_nil_if_nullable(field_is_nullable?(nullable_default, macro, opts))
-    |> override_type(opts)
   end
 
   # Gets the base type for a given Ecto.Type.t()
@@ -137,9 +130,6 @@ defmodule TypedEctoSchema.EctoTypeMapper do
 
   defp add_nil_if_nullable(type, false), do: type
   defp add_nil_if_nullable(type, true), do: quote(do: unquote(type) | nil)
-
-  defp override_type(type, opts),
-    do: Keyword.get(opts, :__typed_ecto_type__, type)
 
   ##
   ## Field Information Helpers

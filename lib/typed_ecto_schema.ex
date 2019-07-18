@@ -1,12 +1,6 @@
 defmodule TypedEctoSchema do
-  @schema_macros [
-    :field,
-    :embeds_one,
-    :embeds_many,
-    :has_one,
-    :has_many,
-    :belongs_to
-  ]
+  alias TypedEctoSchema.SyntaxSugar
+  alias TypedEctoSchema.TypeBuilder
 
   @doc false
   defmacro __using__(_) do
@@ -24,204 +18,50 @@ defmodule TypedEctoSchema do
   end
 
   defmacro typed_embedded_schema(opts \\ [], do: block) do
-    __typed_schema__(
-      opts,
-      block,
-      fn inner ->
-        quote do
-          Ecto.Schema.embedded_schema do
-            unquote(inner)
-          end
-        end
+    quote do
+      unquote(prelude(opts))
+
+      Ecto.Schema.embedded_schema do
+        unquote(inner(block))
       end
-    )
+
+      unquote(postlude(opts))
+    end
   end
 
   defmacro typed_schema(table_name, opts \\ [], do: block) do
-    __typed_schema__(
-      opts,
-      block,
-      fn inner ->
-        quote do
-          Ecto.Schema.schema unquote(table_name) do
-            unquote(inner)
-          end
-        end
-      end
-    )
-  end
-
-  ##
-  ## Callbacks
-  ##
-
-  @doc false
-  def __add_primary_key__(mod) do
-    case Module.get_attribute(mod, :primary_key) do
-      {name, type, opts} ->
-        __add_field__(mod, nil, name, type, opts)
-
-      _ ->
-        :ok
-    end
-  end
-
-  @doc false
-  def __add_field__(mod, macro, name, ecto_type, opts) when is_atom(name) do
-    nullable_default = Module.get_attribute(mod, :null?)
-
-    type =
-      TypedEctoSchema.EctoTypeMapper.type_for(
-        ecto_type,
-        macro,
-        nullable_default,
-        opts
-      )
-
-    TypedEctoSchema.TypeBuilder.add_field(mod, name, type)
-
-    if field_is_enforced?(mod, opts),
-      do: Module.put_attribute(mod, :keys_to_enforce, name)
-
-    if macro == :belongs_to and Keyword.get(opts, :define_field, true) do
-      __add_field__(
-        mod,
-        :field,
-        Keyword.get(opts, :foreign_key, :"#{name}_id"),
-        Keyword.get(opts, :type, :integer),
-        opts
-      )
-    end
-  end
-
-  def __add_field__(_mod, _macro, name, _type, _opts) do
-    raise ArgumentError, "a field name must be an atom, got #{inspect(name)}"
-  end
-
-  defp __typed_schema__(opts, block, wrapper) do
-    wrapped_block =
-      wrapper.(
-        quote do
-          TypedEctoSchema.__add_primary_key__(__MODULE__)
-          unquote(apply_syntax_sugar_to_block(block))
-          @enforce_keys @keys_to_enforce
-        end
-      )
-
     quote do
       unquote(prelude(opts))
-      unquote(wrapped_block)
 
-      TypedEctoSchema.TypeBuilder.define_type(unquote(opts))
+      Ecto.Schema.schema unquote(table_name) do
+        unquote(inner(block))
+      end
 
-      def __typed_schema__(:types), do: TypedEctoSchema.TypeBuilder.types()
+      unquote(postlude(opts))
     end
   end
 
   defp prelude(opts) do
-    enforce? = Keyword.get(opts, :enforce, false)
-    null? = Keyword.get(opts, :null, true)
-
     quote do
-      require TypedEctoSchema.TypeBuilder
-      TypedEctoSchema.TypeBuilder.init()
-      Module.register_attribute(__MODULE__, :keys_to_enforce, accumulate: true)
-      Module.put_attribute(__MODULE__, :enforce?, unquote(enforce?))
-      Module.put_attribute(__MODULE__, :null?, unquote(null?))
+      require unquote(TypeBuilder)
+      unquote(TypeBuilder).init(unquote(opts))
     end
   end
 
-  defp apply_syntax_sugar_to_block(block) do
-    calls =
-      case block do
-        {:__block__, _, calls} ->
-          calls
-
-        call ->
-          [call]
-      end
-
-    new_calls = Enum.map(calls, &apply_syntax_sugar/1)
-
-    {:__block__, [], new_calls}
-  end
-
-  defp apply_syntax_sugar({macro, _, [name, type, opts]})
-       when macro in @schema_macros do
-    ecto_opts = Keyword.drop(opts, [:__typed_ecto_type__, :enforce])
-
+  defp inner(block) do
     quote do
-      unquote(macro)(unquote(name), unquote(type), unquote(ecto_opts))
-
-      TypedEctoSchema.__add_field__(
-        __MODULE__,
-        unquote(macro),
-        unquote(name),
-        unquote(type),
-        unquote(opts)
-      )
+      unquote(TypeBuilder).add_primary_key(__MODULE__)
+      unquote(SyntaxSugar.apply_to_block(block))
+      unquote(TypeBuilder).enforce_keys()
     end
   end
 
-  defp apply_syntax_sugar({macro, _, [name, type]})
-       when macro in @schema_macros do
+  defp postlude(opts) do
     quote do
-      unquote(macro)(unquote(name), unquote(type))
+      unquote(TypeBuilder).define_type(unquote(opts))
 
-      TypedEctoSchema.__add_field__(
-        __MODULE__,
-        unquote(macro),
-        unquote(name),
-        unquote(type),
-        []
-      )
+      def __typed_schema__(:types),
+        do: Enum.reverse(@__typed_ecto_schema_types__)
     end
-  end
-
-  defp apply_syntax_sugar({:field, _, [name]}) do
-    quote do
-      field(unquote(name))
-
-      TypedEctoSchema.__add_field__(
-        __MODULE__,
-        :field,
-        unquote(name),
-        :string,
-        []
-      )
-    end
-  end
-
-  defp apply_syntax_sugar({:::, _, [{macro, _, [name, ecto_type, opts]}, type]})
-       when macro in @schema_macros do
-    apply_syntax_sugar(
-      {macro, [],
-       [name, ecto_type, [{:__typed_ecto_type__, Macro.escape(type)} | opts]]}
-    )
-  end
-
-  defp apply_syntax_sugar({:::, _, [{macro, _, [name, ecto_type]}, type]})
-       when macro in @schema_macros do
-    apply_syntax_sugar(
-      {macro, [], [name, ecto_type, [__typed_ecto_type__: Macro.escape(type)]]}
-    )
-  end
-
-  defp apply_syntax_sugar({:::, _, [{:field, _, [name]}, type]}) do
-    apply_syntax_sugar(
-      {:field, [], [name, :string, [__typed_ecto_type__: Macro.escape(type)]]}
-    )
-  end
-
-  defp apply_syntax_sugar(other), do: other
-
-  ##
-  ## Field Information Helpers
-  ##
-
-  defp field_is_enforced?(mod, opts) do
-    global_enforce = Module.get_attribute(mod, :enforce?)
-    default_enforce = global_enforce && is_nil(opts[:default])
-    Keyword.get(opts, :enforce, default_enforce)
   end
 end
