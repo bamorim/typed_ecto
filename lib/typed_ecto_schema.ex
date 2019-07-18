@@ -101,7 +101,6 @@ defmodule TypedEctoSchema do
     null? = Keyword.get(opts, :null, true)
 
     quote do
-      Module.register_attribute(__MODULE__, :fields, accumulate: true)
       Module.register_attribute(__MODULE__, :types, accumulate: true)
       Module.register_attribute(__MODULE__, :keys_to_enforce, accumulate: true)
       Module.put_attribute(__MODULE__, :enforce?, unquote(enforce?))
@@ -111,7 +110,6 @@ defmodule TypedEctoSchema do
 
       TypedEctoSchema.__type__(@types, unquote(opts))
 
-      def __typed_schema__(:keys), do: Enum.reverse(@fields)
       def __typed_schema__(:types), do: Enum.reverse(@types)
     end
   end
@@ -212,7 +210,6 @@ defmodule TypedEctoSchema do
       |> add_nil_if_nullable(field_is_nullable?(mod, macro, opts))
       |> override_type(opts)
 
-    Module.put_attribute(mod, :fields, name)
     Module.put_attribute(mod, :types, {name, type})
 
     if field_is_enforced?(mod, opts),

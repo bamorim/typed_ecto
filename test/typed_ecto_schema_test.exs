@@ -252,24 +252,6 @@ defmodule TypedEctoSchemaTest do
     assert type1 == type2
   end
 
-  test "generates a function to get the struct keys" do
-    assert TestStruct.__typed_schema__(:keys) == [
-             :id,
-             :int,
-             :string,
-             :non_nullable_string,
-             :enforced_int,
-             :overriden_type,
-             :overriden_string,
-             :embed,
-             :embeds,
-             :has_one,
-             :has_many,
-             :belongs_to,
-             :belongs_to_id
-           ]
-  end
-
   test "generates a function to get the struct types" do
     types =
       quote do
