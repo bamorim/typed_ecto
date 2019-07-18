@@ -91,6 +91,18 @@ defmodule TypedEctoSchemaTest do
     end
   end
 
+  defmodule LotsOfBelonging do
+    use TypedEctoSchema
+
+    @primary_key false
+    typed_schema "table" do
+      belongs_to(:normal, BelongsTo)
+      belongs_to(:with_custom_fk, BelongsTo, foreign_key: :custom_fk)
+      belongs_to(:custom_type, BelongsTo, type: :binary_id)
+      belongs_to(:no_define, BelongsTo, define_field: false)
+    end
+  end
+
   @bytecode bytecode
   @bytecode_opaque bytecode_opaque
 
@@ -299,6 +311,28 @@ defmodule TypedEctoSchemaTest do
       end
 
     assert delete_context(NotNullTypedEctoSchema.__typed_schema__(:types)) ==
+             delete_context(types)
+  end
+
+  test "belongs_to types respect ecto options" do
+    types =
+      quote do
+        [
+          normal:
+            (unquote(BelongsTo).t() | Ecto.Association.NotLoaded.t()) | nil,
+          normal_id: integer() | nil,
+          with_custom_fk:
+            (unquote(BelongsTo).t() | Ecto.Association.NotLoaded.t()) | nil,
+          custom_fk: integer() | nil,
+          custom_type:
+            (unquote(BelongsTo).t() | Ecto.Association.NotLoaded.t()) | nil,
+          custom_type_id: binary() | nil,
+          no_define:
+            (unquote(BelongsTo).t() | Ecto.Association.NotLoaded.t()) | nil
+        ]
+      end
+
+    assert delete_context(LotsOfBelonging.__typed_schema__(:types)) ==
              delete_context(types)
   end
 
