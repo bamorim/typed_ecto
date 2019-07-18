@@ -135,6 +135,7 @@ defmodule TypedEctoSchemaTest do
                __owner__: TestStruct,
                __cardinality__: :one
              },
+             belongs_to_id: nil,
              belongs_to: %Ecto.Association.NotLoaded{
                __field__: :belongs_to,
                __owner__: TestStruct,
@@ -196,7 +197,8 @@ defmodule TypedEctoSchemaTest do
                 has_one: (HasOne.t() | Ecto.Association.NotLoaded.t()) | nil,
                 has_many: list(HasMany.t()) | Ecto.Association.NotLoaded.t(),
                 belongs_to:
-                  (BelongsTo.t() | Ecto.Association.NotLoaded.t()) | nil
+                  (BelongsTo.t() | Ecto.Association.NotLoaded.t()) | nil,
+                belongs_to_id: integer() | nil
               }
       end
 
@@ -251,7 +253,8 @@ defmodule TypedEctoSchemaTest do
              :embeds,
              :has_one,
              :has_many,
-             :belongs_to
+             :belongs_to,
+             :belongs_to_id
            ]
   end
 
@@ -271,7 +274,8 @@ defmodule TypedEctoSchemaTest do
           has_one: (unquote(HasOne).t() | Ecto.Association.NotLoaded.t()) | nil,
           has_many: list(unquote(HasMany).t()) | Ecto.Association.NotLoaded.t(),
           belongs_to:
-            (unquote(BelongsTo).t() | Ecto.Association.NotLoaded.t()) | nil
+            (unquote(BelongsTo).t() | Ecto.Association.NotLoaded.t()) | nil,
+          belongs_to_id: integer() | nil
         ]
       end
 
@@ -289,7 +293,8 @@ defmodule TypedEctoSchemaTest do
           overriden: integer() | nil,
           has_one: (unquote(HasOne).t() | Ecto.Association.NotLoaded.t()) | nil,
           belongs_to:
-            (unquote(BelongsTo).t() | Ecto.Association.NotLoaded.t()) | nil
+            (unquote(BelongsTo).t() | Ecto.Association.NotLoaded.t()) | nil,
+          belongs_to_id: integer()
         ]
       end
 

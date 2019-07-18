@@ -217,6 +217,16 @@ defmodule TypedEctoSchema do
 
     if field_is_enforced?(mod, opts),
       do: Module.put_attribute(mod, :keys_to_enforce, name)
+
+    if macro == :belongs_to and Keyword.get(opts, :define_field, true) do
+      __add_field__(
+        mod,
+        :field,
+        Keyword.get(opts, :foreign_key, :"#{name}_id"),
+        Keyword.get(opts, :type, :integer),
+        opts
+      )
+    end
   end
 
   def __add_field__(_mod, _macro, name, _type, _opts) do
