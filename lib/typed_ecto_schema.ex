@@ -101,16 +101,17 @@ defmodule TypedEctoSchema do
     null? = Keyword.get(opts, :null, true)
 
     quote do
-      Module.register_attribute(__MODULE__, :types, accumulate: true)
+      require TypedEctoSchema.TypeBuilder
+      TypedEctoSchema.TypeBuilder.init()
       Module.register_attribute(__MODULE__, :keys_to_enforce, accumulate: true)
       Module.put_attribute(__MODULE__, :enforce?, unquote(enforce?))
       Module.put_attribute(__MODULE__, :null?, unquote(null?))
 
       unquote(wrapped_block)
 
-      TypedEctoSchema.__type__(@types, unquote(opts))
+      TypedEctoSchema.TypeBuilder.define_type(unquote(opts))
 
-      def __typed_schema__(:types), do: Enum.reverse(@types)
+      def __typed_schema__(:types), do: TypedEctoSchema.TypeBuilder.types()
     end
   end
 
@@ -210,7 +211,7 @@ defmodule TypedEctoSchema do
       |> add_nil_if_nullable(field_is_nullable?(mod, macro, opts))
       |> override_type(opts)
 
-    Module.put_attribute(mod, :types, {name, type})
+    TypedEctoSchema.TypeBuilder.add_field(mod, name, type)
 
     if field_is_enforced?(mod, opts),
       do: Module.put_attribute(mod, :keys_to_enforce, name)
@@ -228,19 +229,6 @@ defmodule TypedEctoSchema do
 
   def __add_field__(_mod, _macro, name, _type, _opts) do
     raise ArgumentError, "a field name must be an atom, got #{inspect(name)}"
-  end
-
-  @doc false
-  defmacro __type__(types, opts) do
-    if Keyword.get(opts, :opaque, false) do
-      quote bind_quoted: [types: types] do
-        @opaque t() :: %__MODULE__{unquote_splicing(types)}
-      end
-    else
-      quote bind_quoted: [types: types] do
-        @type t() :: %__MODULE__{unquote_splicing(types)}
-      end
-    end
   end
 
   ##
