@@ -82,11 +82,11 @@ defmodule TypedEctoSchemaTest do
   defmodule NotNullTypedEctoSchema do
     use TypedEctoSchema
 
-    @primary_key false
-    typed_embedded_schema null: false do
+    typed_schema "table", null: false do
       field(:normal, :integer)
       field(:enforced, :integer, enforce: false)
       field(:overriden, :integer, null: true)
+      has_one(:has_one, HasOne)
       belongs_to(:belongs_to, BelongsTo)
     end
   end
@@ -283,10 +283,13 @@ defmodule TypedEctoSchemaTest do
     types =
       quote do
         [
+          id: integer(),
           normal: integer(),
           enforced: integer(),
           overriden: integer() | nil,
-          belongs_to: unquote(BelongsTo).t() | Ecto.Association.NotLoaded.t()
+          has_one: (unquote(HasOne).t() | Ecto.Association.NotLoaded.t()) | nil,
+          belongs_to:
+            (unquote(BelongsTo).t() | Ecto.Association.NotLoaded.t()) | nil
         ]
       end
 

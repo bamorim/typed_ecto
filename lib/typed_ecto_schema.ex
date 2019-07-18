@@ -329,6 +329,10 @@ defmodule TypedEctoSchema do
   defp field_is_nullable?(_mod, macro, _opts) when macro in @schema_many_macros,
     do: false
 
+  defp field_is_nullable?(_mod, macro, _args)
+       when macro in @schema_assoc_macros,
+       do: true
+
   defp field_is_nullable?(mod, _macro, opts) do
     Keyword.get(opts, :null, Module.get_attribute(mod, :null?))
   end
